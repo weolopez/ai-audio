@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combined Speech-to-Text and Diarization</title>
+    <script src="node_modules/@picovoice/falcon-web/dist/iife/index.js"></script>
+    <script src="node_modules/@picovoice/cheetah-web/dist/iife/index.js"></script>
+    <script src="node_modules/@picovoice/web-voice-processor/dist/iife/index.js"></script>
+    <script src="models/falconModel.js"></script>
+    <script>
+      const script = document.createElement('script');
+      script.src = 'models/cheetahModel.js?t=' + Date.now();
+      document.head.appendChild(script);
+    </script>
+    <script type="application/javascript" src="scripts/combined-audio.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      
+      .section {
+        margin: 20px 0;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background-color: #f9f9f9;
+      }
+      
+      .controls {
+        margin: 15px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      
+      .controls button {
+        padding: 10px 20px;
+        border: 1px solid #007bff;
+        background-color: #007bff;
+        color: white;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      
+      .controls button:hover {
+        background-color: #0056b3;
+      }
+      
+      .controls button:disabled {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        cursor: not-allowed;
+      }
+      
+      .mode-selector {
+        margin: 10px 0;
+      }
+      
+      .mode-selector label {
+        margin-right: 15px;
+        font-weight: bold;
+      }
+      
+      .mode-selector input[type="radio"] {
+        margin-right: 5px;
+      }
+      
+      input[type="text"], input[type="file"] {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      
+      input[type="text"] {
+        width: 300px;
+      }
+      
+      #status {
+        background-color: #e9ecef;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+        white-space: pre-wrap;
+        font-family: monospace;
+        min-height: 40px;
+      }
+      
+      #transcription-result {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        padding: 15px;
+        border-radius: 4px;
+        margin: 10px 0;
+        min-height: 100px;
+        font-size: 16px;
+        line-height: 1.5;
+      }
+      
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+      }
+      
+      table th, table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+      }
+      
+      table th {
+        background-color: #007bff;
+        color: white;
+      }
+      
+      table tr:nth-child(even) {
+        background-color: #f2f2f2;
+      }
+      
+      .timer {
+        font-weight: bold;
+        color: #dc3545;
+      }
+      
+      .hidden {
+        display: none;
+      }
+      
+      .access-key-section {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Combined Speech-to-Text and Speaker Diarization</h1>
+    
+    <div class="access-key-section">
+      <h2>Setup</h2>
+      <p>This application combines speech-to-text transcription and speaker diarization using Picovoice's Cheetah and Falcon engines.</p>
+      <label for="accessKey">
+        AccessKey from <a href="https://console.picovoice.ai/" target="_blank">Picovoice Console</a>:
+      </label>
+      <input type="text" id="accessKey" name="accessKey" placeholder="Enter your Picovoice AccessKey" />
+      <button id="initializeBtn" onclick="initializeEngines()">Initialize Engines</button>
+    </div>
+
+    <div id="mainControls" class="hidden">
+      <div class="section">
+        <h2>Processing Mode</h2>
+        <div class="mode-selector">
+          <label>
+            <input type="radio" name="mode" value="transcription" checked>
+            Speech-to-Text Only
+          </label>
+          <label>
+            <input type="radio" name="mode" value="diarization">
+            Speaker Diarization Only
+          </label>
+          <label>
+            <input type="radio" name="mode" value="both">
+            Both (Transcription + Diarization)
+          </label>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Audio Input</h2>
+        
+        <div class="controls">
+          <label for="audioFile">Upload Audio File:</label>
+          <input type="file" id="audioFile" name="audioFile" accept="audio/*" />
+        </div>
+        
+        <div class="controls">
+          <span><strong>OR</strong></span>
+        </div>
+        
+        <div class="controls">
+          <button id="recordButton">🎤 Start Live Recording</button>
+          <button id="stopButton" class="hidden">⏹️ Stop Recording</button>
+          <span id="timer" class="timer hidden"></span>
+        </div>
+      </div>
+
+      <div id="status"></div>
+
+      <div class="section">
+        <h2>Transcription Results</h2>
+        <div id="transcription-result">Transcription will appear here...</div>
+      </div>
+
+      <div class="section">
+        <h2>Speaker Diarization Results</h2>
+        <table id="diarization-table" class="hidden">
+          <thead>
+            <tr>
+              <th>Start Time (s)</th>
+              <th>End Time (s)</th>
+              <th>Speaker</th>
+              <th>Duration (s)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div id="diarization-placeholder">Diarization results will appear here...</div>
+      </div>
+    </div>
+  </body>
+</html>
